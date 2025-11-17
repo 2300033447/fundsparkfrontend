@@ -1,5 +1,12 @@
 import React, { useState, useEffect, useRef } from "react";
-import { BrowserRouter as Router, Routes, Route, NavLink } from "react-router-dom";
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  NavLink,
+  useNavigate,
+  useParams,
+} from "react-router-dom";
 import "./App.css";
 import axios from "axios";
 
@@ -27,15 +34,22 @@ const categories = [
 /* ----------------------------------
    CAMPAIGN CARD COMPONENT
 ---------------------------------- */
-function CampaignCard({ project, img, onDonateClick }) {
+function CampaignCard({ project, img, onDonateClick, onOpenDetails }) {
   const raised = project.currentAmount || 0;
   const goal = project.targetAmount || 0;
   const percentage = goal > 0 ? Math.min((raised / goal) * 100, 100) : 0;
 
   return (
-    <div className="campaign-card">
-      {img && <img src={img} alt={project.title} />}
-      <h3>{project.title}</h3>
+    <div
+      className="campaign-card"
+      onClick={() => onOpenDetails(project)}
+      style={{ cursor: "pointer" }}
+    >
+      {img && <img src={img} alt={project.title || "Campaign image"} />}
+      <div className="card-header">
+        <h3>{project.title || "Untitled campaign"}</h3>
+        {project.verified && <span className="badge-verified">✔ Verified</span>}
+      </div>
       {project.description && <p className="campaign-desc">{project.description}</p>}
 
       <div className="progress-bar">
@@ -46,7 +60,13 @@ function CampaignCard({ project, img, onDonateClick }) {
         ₹{raised.toLocaleString("en-IN")} raised of ₹{goal.toLocaleString("en-IN")}
       </p>
 
-      <button className="cta small" onClick={() => onDonateClick(project)}>
+      <button
+        className="cta small"
+        onClick={(e) => {
+          e.stopPropagation();
+          onDonateClick(project);
+        }}
+      >
         Donate Now
       </button>
     </div>
@@ -102,6 +122,7 @@ function HomePage({ setShowSignUp }) {
           </div>
         ))}
 
+        {/* Centered hero content */}
         <header className="center-message">
           <h2 className="eyebrow">#1 crowdfunding platform</h2>
           <h1 className="hero-title">
@@ -111,18 +132,22 @@ function HomePage({ setShowSignUp }) {
           <button className="cta" onClick={() => setShowSignUp(true)}>
             Start a Fundspark
           </button>
-
-          <div className="counter">
-            💰 Over ₹{amountRaised.toLocaleString("en-IN")} raised by our community!
-          </div>
         </header>
       </main>
+
+      {/* Counter section below hero */}
+      <section className="counter-section">
+        <div className="counter-box">
+          <span className="emoji">💰</span>
+          Over ₹{amountRaised.toLocaleString("en-IN")} raised by our community!
+        </div>
+      </section>
     </div>
   );
 }
 
 /* ----------------------------------
-   DONATE PAGE — LIVE FROM BACKEND
+   DONATE PAGE — WITH SEARCH/FILTER/SORT
 ---------------------------------- */
 function DonatePage() {
   const [projects, setProjects] = useState([]);
@@ -131,7 +156,14 @@ function DonatePage() {
   const [selectedProject, setSelectedProject] = useState(null);
   const [donorName, setDonorName] = useState("");
   const [donationAmount, setDonationAmount] = useState("");
+  const [donateLoading, setDonateLoading] = useState(false); // <-- NEW
+  const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("All");
+  const [sortBy, setSortBy] = useState("newest");
+  const [showVerifiedOnly, setShowVerifiedOnly] = useState(false);
+
   const activeRef = useRef(null);
+  const navigate = useNavigate();
 
   const imagePool = [medicalIcon, educationIcon, emergencyIcon, animalIcon, businessIcon];
 
@@ -156,9 +188,11 @@ function DonatePage() {
   };
 
   const closeDonateModal = () => {
+    if (donateLoading) return; // prevent closing while processing
     setSelectedProject(null);
   };
 
+  // 🔥 UPDATED: donation with PDF receipt
   const handleDonate = async () => {
     if (!selectedProject) return;
     const amount = parseFloat(donationAmount);
@@ -168,6 +202,7 @@ function DonatePage() {
     }
 
     try {
+      setDonateLoading(true);
       const res = await axios.post(
         `${API_BASE}/api/donations/${selectedProject.id}`,
         {
@@ -175,7 +210,9 @@ function DonatePage() {
           amount,
         }
       );
-      alert(res.data);
+
+      const donation = res.data; // backend returns Donation object
+      alert("Donation successful! Your receipt will download now.");
 
       // update UI currentAmount locally
       setProjects((prev) =>
@@ -185,11 +222,61 @@ function DonatePage() {
             : p
         )
       );
-      closeDonateModal();
+
+      // Open PDF receipt in new tab if donation.id is present
+      if (donation && donation.id) {
+        window.open(`${API_BASE}/api/donations/${donation.id}/receipt`, "_blank");
+      }
+
+      setSelectedProject(null);
     } catch (err) {
       console.error(err);
       alert("Donation failed. Please try again.");
+    } finally {
+      setDonateLoading(false);
     }
+  };
+
+  // --- Safe filter + sort logic (handles null title/description/category) ---
+  const filteredAndSortedProjects = projects
+    .filter((p) => {
+      const q = search.toLowerCase();
+
+      const title = (p.title || "").toLowerCase();
+      const desc = (p.description || "").toLowerCase();
+      const category = (p.category || "").toLowerCase();
+
+      const matchesText = title.includes(q) || desc.includes(q);
+
+      const matchesCategory =
+        categoryFilter === "All" || category === categoryFilter.toLowerCase();
+
+      const matchesVerified = !showVerifiedOnly || p.verified === true;
+
+      // hide deactivated projects if backend sets active=false
+      const isActive = p.active !== false;
+
+      return matchesText && matchesCategory && matchesVerified && isActive;
+    })
+    .sort((a, b) => {
+      if (sortBy === "mostFunded") {
+        const pa = (a.currentAmount || 0) / (a.targetAmount || 1);
+        const pb = (b.currentAmount || 0) / (b.targetAmount || 1);
+        return pb - pa;
+      }
+      if (sortBy === "almostFunded") {
+        const pa = (a.currentAmount || 0) / (a.targetAmount || 1);
+        const pb = (b.currentAmount || 0) / (b.targetAmount || 1);
+        return Math.abs(1 - pa) - Math.abs(1 - pb);
+      }
+      // default: newest (fallback to id if no createdAt)
+      const da = a.createdAt ? new Date(a.createdAt).getTime() : a.id || 0;
+      const db = b.createdAt ? new Date(b.createdAt).getTime() : b.id || 0;
+      return db - da;
+    });
+
+  const openDetailsPage = (project) => {
+    navigate(`/campaign/${project.id}`);
   };
 
   return (
@@ -201,6 +288,49 @@ function DonatePage() {
         <button className="cta" onClick={scrollToActive}>
           View Active Campaigns
         </button>
+
+        {/* Search + filters */}
+        <div className="filter-bar">
+          <input
+            type="text"
+            className="modern-input"
+            placeholder="Search by title or description..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+
+          <select
+            className="modern-input select-input"
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+          >
+            <option value="All">All categories</option>
+            <option value="Medical">Medical</option>
+            <option value="Education">Education</option>
+            <option value="Emergency">Emergency</option>
+            <option value="Animal">Animal</option>
+            <option value="Business">Business</option>
+          </select>
+
+          <select
+            className="modern-input select-input"
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+          >
+            <option value="newest">Newest</option>
+            <option value="mostFunded">Most funded</option>
+            <option value="almostFunded">Almost funded</option>
+          </select>
+
+          <label className="checkbox-inline">
+            <input
+              type="checkbox"
+              checked={showVerifiedOnly}
+              onChange={(e) => setShowVerifiedOnly(e.target.checked)}
+            />
+            Only verified
+          </label>
+        </div>
       </div>
 
       <div className="campaign-grid" ref={activeRef}>
@@ -209,12 +339,13 @@ function DonatePage() {
 
         {!loading &&
           !error &&
-          projects.map((p, index) => (
+          filteredAndSortedProjects.map((p, index) => (
             <CampaignCard
               key={p.id}
               project={p}
               img={imagePool[index % imagePool.length]}
               onDonateClick={openDonateModal}
+              onOpenDetails={openDetailsPage}
             />
           ))}
       </div>
@@ -223,10 +354,10 @@ function DonatePage() {
       {selectedProject && (
         <div className="modal-overlay" onClick={closeDonateModal}>
           <div className="glass-modal" onClick={(e) => e.stopPropagation()}>
-            <button className="modal-close" onClick={closeDonateModal}>
+            <button className="modal-close" onClick={closeDonateModal} disabled={donateLoading}>
               ×
             </button>
-            <h2>Donate to {selectedProject.title}</h2>
+            <h2>Donate to {selectedProject.title || "this campaign"}</h2>
             <p>
               Current: ₹{(selectedProject.currentAmount || 0).toLocaleString("en-IN")} of ₹
               {(selectedProject.targetAmount || 0).toLocaleString("en-IN")}
@@ -238,6 +369,7 @@ function DonatePage() {
               placeholder="Your name"
               value={donorName}
               onChange={(e) => setDonorName(e.target.value)}
+              disabled={donateLoading}
             />
             <input
               type="number"
@@ -245,10 +377,15 @@ function DonatePage() {
               placeholder="Amount (₹)"
               value={donationAmount}
               onChange={(e) => setDonationAmount(e.target.value)}
+              disabled={donateLoading}
             />
 
-            <button className="modern-btn" onClick={handleDonate}>
-              Confirm Donation
+            <button
+              className="modern-btn"
+              onClick={handleDonate}
+              disabled={donateLoading}
+            >
+              {donateLoading ? "Processing..." : "Confirm Donation"}
             </button>
           </div>
         </div>
@@ -277,10 +414,13 @@ function FundraisePage() {
 
     try {
       setLoading(true);
+      const ownerEmail = localStorage.getItem("userEmail") || null;
+
       const res = await axios.post(`${API_BASE}/api/projects`, {
         title,
         description,
         targetAmount: target,
+        ownerEmail, // backend must accept this field
       });
       alert("Fundraiser created! ID: " + res.data.id);
 
@@ -308,6 +448,7 @@ function FundraisePage() {
             placeholder="Fundraiser title"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
+            disabled={loading}
           />
           <textarea
             className="modern-input"
@@ -315,6 +456,7 @@ function FundraisePage() {
             style={{ minHeight: "80px", resize: "vertical" }}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
+            disabled={loading}
           />
           <input
             type="number"
@@ -322,6 +464,7 @@ function FundraisePage() {
             placeholder="Target amount (₹)"
             value={targetAmount}
             onChange={(e) => setTargetAmount(e.target.value)}
+            disabled={loading}
           />
 
           <button className="modern-btn" type="submit" disabled={loading}>
@@ -334,12 +477,280 @@ function FundraisePage() {
 }
 
 /* ----------------------------------
+   CAMPAIGN DETAIL PAGE /campaign/:id
+---------------------------------- */
+function CampaignPage() {
+  const { id } = useParams();
+  const [project, setProject] = useState(null);
+  const [recentDonors, setRecentDonors] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // project details
+    axios
+      .get(`${API_BASE}/api/projects/${id}`)
+      .then((res) => setProject(res.data))
+      .catch(() => setProject(null))
+      .finally(() => setLoading(false));
+
+    // recent donors (optional — backend: GET /api/projects/{id}/donations)
+    axios
+      .get(`${API_BASE}/api/projects/${id}/donations`)
+      .then((res) => setRecentDonors(res.data))
+      .catch(() => setRecentDonors([]));
+  }, [id]);
+
+  if (loading) {
+    return (
+      <div className="page-layout">
+        <div className="page-hero">
+          <h1>Loading campaign...</h1>
+        </div>
+      </div>
+    );
+  }
+
+  if (!project) {
+    return (
+      <div className="page-layout">
+        <div className="page-hero">
+          <h1>Campaign not found</h1>
+        </div>
+      </div>
+    );
+  }
+
+  const raised = project.currentAmount || 0;
+  const goal = project.targetAmount || 0;
+  const percentage = goal > 0 ? Math.min((raised / goal) * 100, 100) : 0;
+
+  const shareLink = window.location.href;
+
+  const copyShareLink = () => {
+    navigator.clipboard.writeText(shareLink);
+    alert("Campaign link copied!");
+  };
+
+  return (
+    <div className="page-layout">
+      <div className="page-hero campaign-hero">
+        <div className="campaign-header">
+          <h1>{project.title || "Untitled campaign"}</h1>
+          {project.verified && <span className="badge-verified large">✔ Verified</span>}
+        </div>
+        <p className="campaign-desc-long">{project.description}</p>
+
+        <div className="progress-bar large">
+          <div className="progress-fill" style={{ width: `${percentage}%` }} />
+        </div>
+        <p className="raised-text">
+          ₹{raised.toLocaleString("en-IN")} raised of ₹{goal.toLocaleString("en-IN")}
+        </p>
+
+        <div className="campaign-actions">
+          <a href="/donate" className="cta">
+            Donate now
+          </a>
+          <button className="sign-btn" onClick={copyShareLink}>
+            Copy share link
+          </button>
+        </div>
+
+        {recentDonors.length > 0 && (
+          <div className="recent-donors">
+            <h3>Recent donors</h3>
+            <ul>
+              {recentDonors.map((d) => (
+                <li key={d.id}>
+                  <strong>{d.donorName}</strong> donated ₹
+                  {d.amount.toLocaleString("en-IN")}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ----------------------------------
+   PROFILE PAGE /profile
+---------------------------------- */
+function ProfilePage({ userEmail }) {
+  const [myProjects, setMyProjects] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!userEmail) {
+      setLoading(false);
+      return;
+    }
+    axios
+      .get(`${API_BASE}/api/projects`)
+      .then((res) => {
+        const mine = res.data.filter((p) => p.ownerEmail === userEmail);
+        setMyProjects(mine);
+      })
+      .finally(() => setLoading(false));
+  }, [userEmail]);
+
+  if (!userEmail) {
+    return (
+      <div className="page-layout">
+        <div className="page-hero">
+          <h1>Profile</h1>
+          <p>Please sign in to see your campaigns.</p>
+        </div>
+      </div>
+    );
+  }
+
+  const totalRaised = myProjects.reduce(
+    (sum, p) => sum + (p.currentAmount || 0),
+    0
+  );
+
+  return (
+    <div className="page-layout">
+      <div className="page-hero">
+        <h1>👤 My Profile</h1>
+        <p>{userEmail}</p>
+
+        {loading ? (
+          <p>Loading your campaigns...</p>
+        ) : (
+          <>
+            <p style={{ marginTop: "10px" }}>
+              Total raised across your campaigns:{" "}
+              <strong>₹{totalRaised.toLocaleString("en-IN")}</strong>
+            </p>
+
+            <h3 style={{ marginTop: "24px", marginBottom: "12px" }}>
+              Your campaigns
+            </h3>
+            {myProjects.length === 0 && <p>You haven&apos;t created any campaigns yet.</p>}
+
+            <div className="campaign-grid">
+              {myProjects.map((p) => (
+                <div key={p.id} className="campaign-card">
+                  <div className="card-header">
+                    <h3>{p.title}</h3>
+                    {p.verified && <span className="badge-verified">✔ Verified</span>}
+                  </div>
+                  <p className="campaign-desc">{p.description}</p>
+                  <p className="raised-text">
+                    ₹{(p.currentAmount || 0).toLocaleString("en-IN")} of ₹
+                    {(p.targetAmount || 0).toLocaleString("en-IN")}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ----------------------------------
+   ADMIN DASHBOARD /admin
+---------------------------------- */
+function AdminDashboard() {
+  const [projects, setProjects] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchProjects = () => {
+    axios
+      .get(`${API_BASE}/api/admin/projects`)
+      .then((res) => setProjects(res.data))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    fetchProjects();
+  }, []);
+
+  const verifyProject = async (id) => {
+    await axios.put(`${API_BASE}/api/admin/projects/${id}/verify`);
+    fetchProjects();
+  };
+
+  const deactivateProject = async (id) => {
+    await axios.put(`${API_BASE}/api/admin/projects/${id}/deactivate`);
+    fetchProjects();
+  };
+
+  return (
+    <div className="page-layout">
+      <div className="page-hero admin-hero">
+        <h1>🧑‍💼 Admin Dashboard</h1>
+        <p>Manage and moderate all campaigns on Fundspark.</p>
+
+        {loading ? (
+          <p>Loading campaigns...</p>
+        ) : (
+          <div className="admin-table-wrapper">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Title</th>
+                  <th>Owner</th>
+                  <th>Raised</th>
+                  <th>Goal</th>
+                  <th>Verified</th>
+                  <th>Active</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {projects.map((p) => (
+                  <tr key={p.id}>
+                    <td>{p.id}</td>
+                    <td>{p.title}</td>
+                    <td>{p.ownerEmail || "-"}</td>
+                    <td>₹{(p.currentAmount || 0).toLocaleString("en-IN")}</td>
+                    <td>₹{(p.targetAmount || 0).toLocaleString("en-IN")}</td>
+                    <td>{p.verified ? "✔" : "✖"}</td>
+                    <td>{p.active === false ? "❌" : "✅"}</td>
+                    <td>
+                      {!p.verified && (
+                        <button
+                          className="admin-btn verify"
+                          onClick={() => verifyProject(p.id)}
+                        >
+                          Verify
+                        </button>
+                      )}
+                      {p.active !== false && (
+                        <button
+                          className="admin-btn deactivate"
+                          onClick={() => deactivateProject(p.id)}
+                        >
+                          Deactivate
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ----------------------------------
    APP ROUTER + AUTH MODALS
 ---------------------------------- */
 export default function App() {
   const [showSignIn, setShowSignIn] = useState(false);
   const [showSignUp, setShowSignUp] = useState(false);
   const [userName, setUserName] = useState("");
+  const [userEmail, setUserEmail] = useState("");
 
   // auth form state
   const [signInEmail, setSignInEmail] = useState("");
@@ -352,13 +763,19 @@ export default function App() {
 
   useEffect(() => {
     const storedUser = localStorage.getItem("userName");
+    const storedEmail = localStorage.getItem("userEmail");
     if (storedUser) setUserName(storedUser);
+    if (storedEmail) setUserEmail(storedEmail);
   }, []);
+
+  const isAdmin = userEmail === "admin@fundspark.com"; // simple demo rule
 
   const handleLogout = () => {
     if (window.confirm("Are you sure you want to log out?")) {
       localStorage.removeItem("userName");
+      localStorage.removeItem("userEmail");
       setUserName("");
+      setUserEmail("");
     }
   };
 
@@ -373,7 +790,9 @@ export default function App() {
       if (res.data === "Login successful!") {
         const namePart = signInEmail.split("@")[0];
         setUserName(namePart);
+        setUserEmail(signInEmail);
         localStorage.setItem("userName", namePart);
+        localStorage.setItem("userEmail", signInEmail);
         setShowSignIn(false);
       }
     } catch (err) {
@@ -407,7 +826,6 @@ export default function App() {
       {/* NAVBAR */}
       <nav className="navbar">
         <div className="nav-left">
-          <span className="nav-item">🔍 Search</span>
           <NavLink
             to="/donate"
             className={({ isActive }) => `nav-item ${isActive ? "active-link" : ""}`}
@@ -420,6 +838,22 @@ export default function App() {
           >
             Fundraise
           </NavLink>
+          {userName && (
+            <NavLink
+              to="/profile"
+              className={({ isActive }) => `nav-item ${isActive ? "active-link" : ""}`}
+            >
+              Profile
+            </NavLink>
+          )}
+          {isAdmin && (
+            <NavLink
+              to="/admin"
+              className={({ isActive }) => `nav-item ${isActive ? "active-link" : ""}`}
+            >
+              Admin
+            </NavLink>
+          )}
         </div>
 
         <div className="nav-center">
@@ -467,6 +901,9 @@ export default function App() {
         <Route path="/" element={<HomePage setShowSignUp={setShowSignUp} />} />
         <Route path="/donate" element={<DonatePage />} />
         <Route path="/fundraise" element={<FundraisePage />} />
+        <Route path="/campaign/:id" element={<CampaignPage />} />
+        <Route path="/profile" element={<ProfilePage userEmail={userEmail} />} />
+        {isAdmin && <Route path="/admin" element={<AdminDashboard />} />}
       </Routes>
 
       {/* SIGN-IN MODAL */}
