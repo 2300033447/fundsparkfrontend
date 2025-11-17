@@ -398,4 +398,142 @@ body {
   from { opacity: 0; transform: translateY(30px); }
   to { opacity: 1; transform: translateY(0); }
 }
+/* Fix spacing for donation counter below hero */
+.counter-section {
+  margin-top: 120px; /* pushes it further below hero */
+  padding-bottom: 100px;
+}
+
+.counter-box {
+  background: #f4f0ff;
+  color: #4b1fcf;
+  font-size: 1.4rem;
+  font-weight: 600;
+  border-radius: 40px;
+  padding: 18px 32px;
+  display: inline-block;
+  box-shadow: 0 8px 25px rgba(108, 62, 244, 0.15);
+  animation: fadeUp 1s ease-out;
+}
+
+/* === ACTIVE CAMPAIGN GRID === */
+.campaign-grid {
+  width: 100%;
+  max-width: 1200px;
+  margin: 80px auto;
+  padding: 0 20px;
+
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 32px;
+
+  justify-items: center;
+}
+
+/* === CAMPAIGN CARD === */
+.campaign-card {
+  width: 100%;
+  max-width: 340px;
+
+  background: #ffffff;
+  padding: 20px;
+  border-radius: 18px;
+
+  text-align: center;
+  box-shadow: 0 10px 30px rgba(108, 62, 244, 0.15);
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.campaign-card:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 16px 40px rgba(108, 62, 244, 0.28);
+}
+
+.campaign-card img {
+  width: 100%;
+  height: 180px;
+  border-radius: 16px;
+  object-fit: cover;
+  margin-bottom: 14px;
+}
+
+.campaign-card h3 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-top: 10px;
+}
+
+/* === PROGRESS BAR === */
+.progress-bar {
+  width: 100%;
+  height: 10px;
+  background: #f0e8ff;
+  border-radius: 20px;
+  overflow: hidden;
+  margin: 14px 0;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #6c3ef4, #4b1fcf);
+  transition: width 1s ease;
+}
+
+.raised-text {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 14px;
+}
+
+/* Small Purple Button */
+.cta.small {
+  font-size: 0.9rem;
+  padding: 10px 24px;
+  border-radius: 30px;
+  margin-top: 10px;
+}/* === FUNDRAISE PAGE === */
+.fundraise-layout {
+  min-height: 100vh;
+  padding-top: 150px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  background: radial-gradient(circle at top, #faf7ff 0%, #ffffff 100%);
+}
+
+.fundraise-box {
+  width: 100%;
+  max-width: 550px;
+  padding: 40px;
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 24px;
+  box-shadow: 0 15px 40px rgba(108, 62, 244, 0.15);
+  text-align: center;
+  backdrop-filter: blur(8px);
+  animation: fadeUp 0.6s ease-out;
+}
+
+.fundraise-box h1 {
+  font-size: 2.4rem;
+  color: #4b1fcf;
+  font-weight: 800;
+}
+
+.fundraise-box p {
+  font-size: 1.1rem;
+  margin: 10px 0 22px;
+  color: #333;
+}
+
+.textarea {
+  resize: none;
+}
+
+.cta.large {
+  width: 100%;
+  padding: 14px;
+  font-size: 1.2rem;
+  border-radius: 40px;
+}
 
